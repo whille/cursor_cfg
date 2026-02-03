@@ -1,2 +1,6 @@
-ln -s ./rules ~/.cursor/rules
-ln -s ./skills ~/.cursor/skills
+# bash
+```
+for item in rules skills commands; do
+  ln -s $(realpath ./$item) ~/.cursor/$item
+done
+```
