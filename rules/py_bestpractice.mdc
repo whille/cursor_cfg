@@ -1,0 +1,52 @@
+---
+description: Python 为主（pandas、类型与文档、测试）、偶发前端生成的统一规范；Python 相关文件触发，前端为约定说明。
+globs: ["**/*.py", "**/requirements.txt", "**/setup.py", "**/pyproject.toml", "**/*.tsx", "**/*.jsx", "**/*.vue"]
+alwaysApply: false
+---
+
+# Python 为主 + 偶发前端 · 自用规则
+
+## 核心原则
+- **可读性优先**于炫技式性能；代码简洁、少重复、可复用。
+- **数据驱动**：用 pandas 做数据处理、过滤、汇总与展示；优先向量化，避免手写循环。
+- **类型与文档**：所有函数/类加类型注解与显式返回类型（含 `None`）；遵循 PEP 257 写 docstring；**保留文件内已有注释**，不删改原意。
+- **不留尾巴**：不写 TODO/placeholder/未实现桩；若暂不实现则说明原因。
+- 向前兼容：除非明确要求，否则不保证旧版本兼容。
+
+## 1. Python 结构与风格
+
+- **项目结构**：`src/`（core、analyzers、utils 等）、`tests/`、`docs/`、`data/`、`logs/`；包下需有 `__init__.py`。
+- **函数**：单函数 ≤70 行；重复逻辑提取公共函数，参数化、避免硬编码。
+- **类**：单一职责；重复初始化进基类；组合优于继承；私有成员 `_` 前缀。
+- **命名**：snake_case / PascalCase / UPPER_CASE；**字符串默认双引号 `"`**。
+
+## 2. 数据处理（pandas）
+
+- 用 pandas 做打印、过滤、聚合、合并；优先 `df.loc/query/groupby/merge` 等，避免行级 Python 循环。
+- 大表注意内存：适时释放、用 chunk 或生成器；可考虑缓存中间结果。
+
+## 3. 错误与配置
+
+- **默认不包 try-except**：让异常上抛；仅在需捕获特定异常或做恢复时使用，并打日志。
+- 配置：环境变量或 Config 类集中管理；日志统一格式、分级、可落盘。
+
+## 4. 测试与文档
+
+- **仅用 pytest**（不用 unittest）；测试放 `tests/`，需类型注解与 docstring；新建包或 `tests/` 下包时补 `__init__.py`。
+- 注释：多写「为什么」和边界/不变量，少写显而易见的「在做什么」；简洁、贴代码。
+
+## 5. 代码质量与命令
+
+- 格式化与风格：**ruff** — `ruff format .`、`ruff check .`；类型：`mypy .`。
+- 测试：`pytest` / `pytest path/to/tests` / `pytest -v`；依赖：`pip install -r requirements.txt` 或 `uv sync` / `poetry install`。
+- 生成或修改代码时：**标明涉及的文件路径**；回复简洁，少废话。
+
+## 6. 偶发前端（AI 生成）
+
+- 技术栈：当前稳定版 **React** + **Tailwind**；若项目已定 Next/Vue 等则从之。
+- 组件：小文件、单一职责、可读命名；尽量不魔改已有 UI 库源码；生成时注明文件名与路径。
+- 与 Python 一致：无 TODO/占位；类型清晰（TypeScript 时写类型）。
+
+## 7. Git 提交
+
+- 约定式提交：`type(scope): description`（feat, fix, docs, style, refactor, test, chore）；英文；首行 ≤50 字。
