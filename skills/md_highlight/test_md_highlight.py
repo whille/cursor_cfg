@@ -70,15 +70,15 @@ def validate_highlight_output(md: str) -> tuple[bool, list[str]]:
         if text_len < 2 or text_len > 10:
             errors.append(f"标注长度 {text_len} 超出 2～10 字范围，内容: {text[:20]}...")
 
-    # 2. Density: split by blank lines, max 4 per paragraph
+    # 2. Density: split by blank lines, max 3 per paragraph (SKILL: 单段最多3处标注)
     all_span_pattern = re.compile(
         r'<span (?:class="hl-(?:concept|conclusion|data|warning|step)"|style="background-color:[#a-fA-F0-9]+; padding:2px 4px; border-radius:3px;")>[^<]+</span>'
     )
     paragraphs = re.split(r"\n\s*\n", md)
     for i, para in enumerate(paragraphs):
         count = len(all_span_pattern.findall(para))
-        if count > 4:
-            errors.append(f"第 {i + 1} 段标注密度过高: {count} 处（最多 4 处）")
+        if count > 3:
+            errors.append(f"第 {i + 1} 段标注密度过高: {count} 处（最多 3 处）")
 
     # 3. Overall density
     lines = [l for l in md.split("\n") if l.strip()]

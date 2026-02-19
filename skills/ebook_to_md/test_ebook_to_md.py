@@ -24,17 +24,17 @@ HAS_BAIDU_OCR = bool(os.getenv("BAIDU_OCR_API_KEY") and os.getenv("BAIDU_OCR_SEC
 
 
 def _count_table_rows(md: str) -> int:
-    """Markdown 表格行数（不含表头分隔行）"""
-    lines = [l.strip() for l in md.split("\n")]
+    """表格行数：Markdown 表格（不含表头分隔行）或 HTML <table> 中的 <tr> 行数"""
     count = 0
-    in_table = False
+    # Markdown: | ... | 且非分隔行 ---
+    lines = [l.strip() for l in md.split("\n")]
     for line in lines:
         if line.startswith("|") and line.endswith("|"):
             if "---" not in line:
                 count += 1
-            in_table = True
-        else:
-            in_table = False
+    # HTML：实现会输出 <table>...</table>，按 <tr> 计行
+    if count == 0 and "<table" in md and "<tr>" in md:
+        count = len(re.findall(r"<tr>", md))
     return count
 
 

@@ -187,16 +187,8 @@ def _format_image_markdown_paragraphs(content: str) -> str:
     if not lines:
         return content
     out = []
-    # 首行若为短标题（2～12 字、无句末标点），转为 ## 标题
-    first = lines[0].strip()
-    if first and len(first) <= 12 and not re.search(r"[。？！.?!：:]\s*$", first):
-        out.append("## " + first)
-        out.append("")
-        start = 1
-    else:
-        start = 0
-    # 在每段以 “ 开头的对话前插入空行（分段）
-    for i in range(start, len(lines)):
+    # 在每段以 “ 开头的对话前插入空行（分段）；标题由 OCR 识别，不做首行推测
+    for i in range(0, len(lines)):
         line = lines[i]
         if line.strip().startswith("\u201c") and out and out[-1] != "":
             out.append("")
@@ -622,7 +614,9 @@ class _EbookToMdImpl:
                 md_content = _execute_baidu_complex(baidu_config, input_path)
                 if md_content.startswith("错误:"):
                     return {"success": False, "error": md_content}
-                markdown = md_content
+                markdown = md_content.strip()
+                if not markdown:
+                    return {"success": False, "error": "未识别到文字"}
             else:
                 return {"success": False, "error": "不支持的输入类型"}
 
