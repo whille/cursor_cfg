@@ -381,8 +381,12 @@ def _normalize_figure_to_markdown(md_content: str) -> str:
 
     def _repl(m):
         path = m.group(1)
+        if path is None:
+            # Matched <img> branch (no capturing group); extract src from match
+            src_m = re.search(r'src=["\']([^"\']+)["\']', m.group(0))
+            path = src_m.group(1) if src_m else "."
         cap = (m.group(2) or "").strip()
-        if not path.startswith("./") and not path.startswith("data:"):
+        if path and not path.startswith("./") and not path.startswith("data:"):
             path = "./" + path
         # 图注显示在图片下方，而非仅放在 alt 中（alt 通常不显示）
         if cap:
