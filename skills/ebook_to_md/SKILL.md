@@ -1,11 +1,11 @@
 ---
 name: ebook-to-md
-description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown or HTML. Supports Baidu OCR (default) or local Tesseract. Use when 扫描PDF转Markdown、pdf ocr、图像识别、电子书转Markdown、ebook to markdown.
+description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown. Uses Baidu OCR only. Use when 扫描PDF转Markdown、pdf ocr、图像识别、电子书转Markdown、ebook to markdown.
 ---
 
 # ebook_to_md Skill
 
-将 PDF、图片、MOBI、EPUB 转为 Markdown 或 HTML。支持百度 OCR（默认）或本地 Tesseract。合并了原 pdf_ocr_to_markdown 与 ocr 功能。
+将 PDF、图片、MOBI、EPUB 转为 Markdown。仅使用百度 OCR。
 
 ## 输入格式
 
@@ -17,8 +17,7 @@ description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown or HTML. Supports Baidu 
 
 ## 输出格式
 
-- **md**（默认）：Markdown
-- **html**：HTML
+仅输出 **Markdown**（.md）。
 
 ## 参数
 
@@ -26,8 +25,7 @@ description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown or HTML. Supports Baidu 
 |------|------|------|------|------|
 | input_path | string | 是 | - | 文档路径（pdf/png/jpeg/mobi/epub）或 base64 图片 |
 | output_path | string | 否 | - | 输出文件路径 |
-| output_format | string | 否 | "md" | 输出格式：md, html |
-| ocr_backend | string | 否 | "baidu" | OCR 引擎：baidu, local |
+| ocr_backend | string | 否 | "baidu" | 保留参数，仅支持百度 |
 | inline_images | bool | 否 | false | 图片是否 base64 内联（仅 baidu+PDF） |
 
 ## 快速开始
@@ -40,10 +38,6 @@ from skills.ebook_to_md.ebook_to_md import run
 print(run(input_path='./scanned.pdf'))
 # 图片转 Markdown
 print(run(input_path='./screenshot.png'))
-# 输出 HTML
-print(run(input_path='./doc.pdf', output_format='html', output_path='./out.html'))
-# 使用本地 Tesseract
-print(run(input_path='./doc.pdf', ocr_backend='local'))
 "
 ```
 
@@ -52,16 +46,13 @@ print(run(input_path='./doc.pdf', ocr_backend='local'))
 ### Python
 
 ```bash
-pip install pymupdf pytesseract Pillow requests
-# 可选：HTML 输出
-pip install markdown  # 或 mistune
+pip install requests
 ```
 
 ### 系统
 
-- **Tesseract**（ocr_backend=local）：`brew install tesseract tesseract-lang`
 - **Calibre**（mobi/epub）：`brew install calibre`
-- **百度 OCR**（ocr_backend=baidu）：设置 `BAIDU_OCR_API_KEY`、`BAIDU_OCR_SECRET_KEY`
+- **百度 OCR**：设置 `BAIDU_OCR_API_KEY`、`BAIDU_OCR_SECRET_KEY`
 
 ## 使用示例
 
@@ -73,23 +64,12 @@ run(input_path='./report.pdf', output_path='./report.md')
 run(input_path='./image.png')  # 图片识别
 ```
 
-### 本地 Tesseract
-
-```python
-run(input_path='./scanned.pdf', ocr_backend='local', output_path='./out.md')
-```
-
-### 输出 HTML
-
-```python
-run(input_path='./doc.pdf', output_format='html', output_path='./doc.html')
-```
 
 ### MOBI/EPUB（需 Calibre）
 
 ```python
 run(input_path='./book.epub', output_path='./book.md')
-run(input_path='./book.mobi', ocr_backend='local')
+run(input_path='./book.mobi', output_path='./book.md')
 ```
 
 ## 返回格式

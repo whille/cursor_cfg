@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-ebook_to_md skill: convert PDF/PNG/JPEG/MOBI/EPUB to Markdown or HTML.
-Supports Baidu OCR (default) or local Tesseract. Schema auto-inferred from run().
+ebook_to_md skill: convert PDF/PNG/JPEG/MOBI/EPUB to Markdown.
+Uses Baidu OCR only. Schema auto-inferred from run().
 """
 
 try:
@@ -12,7 +12,6 @@ except ImportError:
     pass
 
 import base64
-import io
 import json
 import logging
 import os
@@ -21,36 +20,21 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from html import escape
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import pytesseract  # type: ignore[import-untyped]
 import requests
-import fitz
-from PIL import Image
-
-try:
-    import markdown
-except ImportError:
-    markdown = None  # type: ignore[misc, assignment]
-
-try:
-    import mistune
-except ImportError:
-    mistune = None  # type: ignore[misc, assignment]
 
 logger = logging.getLogger(__name__)
 
 # Cursor-style: schema inferred from run()
-TOOL_DESCRIPTION = "将 PDF/图片/MOBI/EPUB 转为 Markdown 或 HTML，支持百度 OCR（默认）或本地 Tesseract"
+TOOL_DESCRIPTION = "将 PDF/图片/MOBI/EPUB 转为 Markdown，使用百度 OCR"
 TOOL_REQUIRED = ["input_path"]
 PARAM_DESCRIPTIONS = {
     "input_path": "文档路径，支持 pdf/png/jpeg/mobi/epub；可为 base64 图片数据",
     "output_path": "输出文件路径（不指定则仅返回字符串）",
-    "output_format": "输出格式：md（默认）或 html",
-    "ocr_backend": "OCR 引擎：baidu（默认）或 local",
-    "inline_images": "图片是否 base64 内联（仅 baidu+PDF）",
+    "ocr_backend": "保留参数，仅支持百度 OCR",
+    "inline_images": "图片是否 base64 内联（仅百度+PDF）",
 }
 
 FIG_HEIGHT_PT = 260
@@ -59,18 +43,6 @@ IMG_SRC_PATTERN = re.compile(r'<img\s+src=["\']?([^"\'>\s]+)["\']?\s*/?>', re.IG
 
 SUPPORTED_INPUT_EXTS = {".pdf", ".png", ".jpeg", ".jpg", ".mobi", ".epub"}
 IMAGE_EXTS = {".png", ".jpeg", ".jpg"}
-
-
-def _setup_tessdata() -> None:
-    """设置 TESSDATA_PREFIX，优先项目 tessdata/ 或 skill tessdata/"""
-    if os.environ.get("TESSDATA_PREFIX"):
-        return
-    root = Path(__file__).resolve().parents[2]
-    for p in [root / "tessdata", Path(__file__).resolve().parent / "tessdata"]:
-        if (p / "chi_sim.traineddata").exists():
-            os.environ["TESSDATA_PREFIX"] = str(p) + os.sep
-            logger.info("TESSDATA_PREFIX=%s", os.environ["TESSDATA_PREFIX"])
-            return
 
 
 def _detect_input_type(input_path: str) -> str:
@@ -136,15 +108,6 @@ def _convert_ebook_to_pdf(ebook_path: str) -> str:
             except OSError:
                 pass
         raise
-
-
-def _markdown_to_html(md_content: str) -> str:
-    """Convert Markdown to HTML."""
-    if markdown is not None:
-        return markdown.markdown(md_content, extensions=["extra", "codehilite"])
-    if mistune is not None:
-        return mistune.markdown(md_content)
-    return "<pre>{}</pre>".format(escape(md_content))
 
 
 # ----- Baidu OCR helpers (from ocr skill) -----
@@ -429,9 +392,53 @@ def _normalize_figure_to_markdown(md_content: str) -> str:
         cap = (m.group(2) or "").strip()
         if not path.startswith("./") and not path.startswith("data:"):
             path = "./" + path
-        return "![{}]({})".format(cap, path)
+        # 图注显示在图片下方，而非仅放在 alt 中（alt 通常不显示）
+        if cap:
+            return "![]({})\n\n*{}*".format(path, cap)
+        return "![]({})".format(path)
 
     return figure_pattern.sub(_repl, md_content)
+
+
+# 图中标签行：紧跟在 ![](...) 后的短行（如构造图标注），合并为「（图中文字：xxx）」
+FIG_LABEL_MAX_LEN = 28
+FIG_IMG_LINE = re.compile(r"^\s*!\[\]\([^\)]*\)\s*$")
+
+
+def _collapse_figure_labels(md_content: str) -> str:
+    """将图片后的多行短标签合并为单行「（图中文字：a、b、c）」或移除。"""
+    lines = md_content.split("\n")
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if FIG_IMG_LINE.match(line):
+            out.append(line)
+            i += 1
+            labels: List[str] = []
+            while i < len(lines):
+                cur = lines[i]
+                s = cur.strip()
+                if not s:
+                    i += 1
+                    continue
+                if FIG_IMG_LINE.match(cur) or cur.strip().startswith(("#", "-", "*", "<")):
+                    break
+                if "。" in s or "！" in s or "？" in s:
+                    break
+                if len(s) > FIG_LABEL_MAX_LEN:
+                    break
+                # 同一行可能有多项（如「触角\t\t头部」），按空白拆开
+                for part in re.split(r"[\s]+", s):
+                    if part:
+                        labels.append(part)
+                i += 1
+            if labels:
+                out.append("（图中文字：{}）".format("、".join(labels)))
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
 
 
 def _inline_images_as_base64(md_content: str) -> str:
@@ -534,209 +541,20 @@ def _execute_baidu_complex(config: _BaiduComplexConfig, file_path: str) -> str:
             md_content = _inline_images_as_local(md_content, output_path_obj)
     if "<figure>" in md_content or "<figcaption>" in md_content:
         md_content = _normalize_figure_to_markdown(md_content)
+    md_content = _collapse_figure_labels(md_content)
     return md_content
-
-
-# ----- Local OCR: _PdfOcrImpl logic (from pdf_ocr_to_markdown) -----
-
-
-class _LocalPdfOcrImpl:
-    """Local Tesseract OCR for PDF."""
-
-    def _ocr_pages(self, pdf_path: str, scale: float = 2.0) -> List[Tuple[str, Any]]:
-        _setup_tessdata()
-        doc = fitz.open(pdf_path)
-        results = []
-        mat = fitz.Matrix(scale, scale)
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text = pytesseract.image_to_string(img, lang="chi_sim")
-            results.append((text, img))
-        doc.close()
-        return results
-
-    def _extract_figures(self, pdf_path: str, output_stem: str, scale: float = 2.0) -> Dict[str, str]:
-        _setup_tessdata()
-        doc = fitz.open(pdf_path)
-        mat = fitz.Matrix(scale, scale)
-        fig_height_px = FIG_HEIGHT_PT * scale
-        out_dir = Path(output_stem).parent / (Path(output_stem).stem + "_images")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        figures = {}
-        line_nums = data = None
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            data = pytesseract.image_to_data(img, lang="chi_sim", output_type=pytesseract.Output.DICT)
-            n_boxes = len(data["text"])
-            line_nums = data.get("line_num", [0] * n_boxes)
-            for i in range(n_boxes):
-                txt = (data["text"][i] or "").strip()
-                fig_num = None
-                if txt == "图":
-                    for j in range(i + 1, n_boxes):
-                        if line_nums[j] != line_nums[i]:
-                            break
-                        next_txt = (data["text"][j] or "").strip()
-                        if next_txt.isdigit():
-                            fig_num = next_txt
-                            break
-                elif txt and txt[0] == "图" and len(txt) > 1:
-                    m = re.search(r"图\s*(\d+)", txt)
-                    if m:
-                        fig_num = m.group(1)
-                if not fig_num or fig_num in figures:
-                    continue
-                left = data["left"][i]
-                top = data["top"][i]
-                width = data["width"][i]
-                height = data["height"][i]
-                if txt == "图":
-                    for j in range(i + 1, n_boxes):
-                        if line_nums[j] != line_nums[i]:
-                            break
-                        next_txt = (data["text"][j] or "").strip()
-                        if next_txt == fig_num:
-                            l2, t2, w2, h2 = (
-                                data["left"][j],
-                                data["top"][j],
-                                data["width"][j],
-                                data["height"][j],
-                            )
-                            left = min(left, l2)
-                            top = min(top, t2)
-                            width = max(left + width, l2 + w2) - left
-                            height = max(top + height, t2 + h2) - top
-                            break
-                crop_top = max(0, int(top - fig_height_px))
-                crop_left = max(0, int(left) - 20)
-                crop_right = min(img.width, int(left) + int(width) + 20)
-                crop_bottom = int(top) + int(height) + 10
-                crop_img = img.crop((crop_left, crop_top, crop_right, crop_bottom))
-                fn = "fig{}.png".format(fig_num)
-                out_path = out_dir / fn
-                crop_img.save(out_path)
-                rel = (Path(output_stem).stem + "_images") + "/" + fn
-                figures[fig_num] = "./" + rel
-        doc.close()
-        return figures
-
-    def _parse_tables(self, text: str) -> str:
-        lines = text.strip().split("\n")
-        output = []
-        buf = []
-
-        def _flush_table():
-            if len(buf) < 2:
-                for row in buf:
-                    output.append(" ".join(row))
-                return
-            col_count = max(len(row) for row in buf)
-            for row in buf:
-                while len(row) < col_count:
-                    row.append("")
-            sep = ["---"] * col_count
-            table = "| " + " | ".join(buf[0]) + " |\n"
-            table += "| " + " | ".join(sep) + " |\n"
-            for row in buf[1:]:
-                table += "| " + " | ".join(row) + " |\n"
-            output.append(table.rstrip())
-
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                if buf:
-                    _flush_table()
-                    buf = []
-                output.append("")
-                continue
-            parts = re.split(r"\s{2,}|\t|\|", stripped)
-            parts = [p.strip() for p in parts if p.strip()]
-            is_table_row = len(parts) >= 3 and (
-                any(re.search(r"[\d～~\-\s]+", p) for p in parts) or any("—" in p or "－" in p for p in parts)
-            )
-            if is_table_row:
-                buf.append(parts)
-            else:
-                if buf:
-                    _flush_table()
-                    buf = []
-                output.append(stripped)
-        if buf:
-            _flush_table()
-        return "\n".join(output)
-
-    def _insert_figure_refs(self, markdown: str, figures: Dict[str, str]) -> str:
-        if not figures:
-            return markdown
-        for fig_num, rel_path in figures.items():
-            pattern = re.compile(
-                r"([（(]?\s*图\s*" + re.escape(fig_num) + r"\s*[)）]?)",
-                re.IGNORECASE,
-            )
-            alt = "图{}".format(fig_num)
-            img_md = "\n\n![{}]({})\n\n".format(alt, rel_path)
-
-            def repl(m):
-                return m.group(0) + img_md
-
-            markdown = pattern.sub(repl, markdown, count=1)
-        return markdown
-
-    def execute_pdf(self, pdf_path: str, output_path: Optional[str]) -> Dict[str, Any]:
-        path = Path(pdf_path)
-        pages_data = self._ocr_pages(str(path))
-        full_text = "\n\n".join(t[0] for t in pages_data)
-        page_count = len(pages_data)
-        if not full_text.strip():
-            return {"success": False, "error": "OCR 未识别到文字", "page_count": page_count}
-        output_stem = str(Path(output_path).with_suffix("")) if output_path else str(path.with_suffix(""))
-        figures = self._extract_figures(str(path), output_stem)
-        markdown = self._parse_tables(full_text)
-        markdown = self._insert_figure_refs(markdown, figures)
-        markdown = markdown.strip()
-        return {
-            "success": True,
-            "markdown": markdown,
-            "page_count": page_count,
-            "figure_count": len(figures),
-        }
-
-
-def _ocr_image_local(image_path: str) -> str:
-    """Tesseract OCR for single image. Handles path or base64."""
-    _setup_tessdata()
-    image_base64 = _read_image_file(image_path)
-    if not image_base64:
-        raise ValueError("无法读取图片文件")
-    try:
-        raw = base64.b64decode(image_base64)
-    except Exception:
-        if Path(image_path).exists():
-            with open(image_path, "rb") as f:
-                raw = f.read()
-        else:
-            raise ValueError("无法解码图片数据")
-    img = Image.open(io.BytesIO(raw))
-    if img.mode != "RGB":
-        img = img.convert("RGB")
-    return pytesseract.image_to_string(img, lang="chi_sim")
 
 
 # ----- Main router -----
 
 
 class _EbookToMdImpl:
-    """Unified ebook/image to Markdown or HTML."""
+    """Unified ebook/image to Markdown."""
 
     def execute(self, **kwargs) -> Dict[str, Any]:
         params = kwargs.get("parameters", kwargs) if isinstance(kwargs.get("parameters"), dict) else kwargs
         input_path = params.get("input_path") or kwargs.get("input_path")
         output_path = params.get("output_path") or kwargs.get("output_path")
-        output_format = (params.get("output_format") or kwargs.get("output_format") or "md").lower()
         ocr_backend = (params.get("ocr_backend") or kwargs.get("ocr_backend") or "baidu").lower()
         inline_images = params.get("inline_images", kwargs.get("inline_images", False))
 
@@ -765,65 +583,55 @@ class _EbookToMdImpl:
         else:
             _temp_ebook_pdf = None
 
-        _local_page_count = None
-        _local_figure_count = None
+        if ocr_backend != "baidu":
+            return {"success": False, "error": "仅支持百度 OCR"}
+
+        api_key = os.getenv("BAIDU_OCR_API_KEY")
+        secret_key = os.getenv("BAIDU_OCR_SECRET_KEY")
+        baidu_config = _BaiduComplexConfig(
+            api_key=api_key,
+            secret_key=secret_key,
+            output_path=output_path,
+            inline_images=inline_images,
+        )
+        _temp_image_file = None
         try:
             if input_type == "image":
-                if ocr_backend == "baidu":
-                    api_key = os.getenv("BAIDU_OCR_API_KEY")
-                    secret_key = os.getenv("BAIDU_OCR_SECRET_KEY")
+                if is_path:
+                    file_path = input_path
+                else:
                     image_base64 = _read_image_file(input_path)
                     if not image_base64:
                         return {"success": False, "error": "无法读取图片"}
-                    result = _call_baidu_ocr_api(api_key, secret_key, image_base64)
-                    text = _extract_text_from_baidu_result(result)
-                    if "error_code" in result and result.get("error_code", 0) != 0:
-                        return {"success": False, "error": text}
-                    content = text
-                else:
-                    content = _ocr_image_local(input_path)
-                content = content.strip()
-                if not content:
+                    try:
+                        raw = base64.b64decode(image_base64)
+                    except Exception:
+                        return {"success": False, "error": "无法解码图片数据"}
+                    fd, _temp_image_file = tempfile.mkstemp(suffix=".png")
+                    os.close(fd)
+                    Path(_temp_image_file).write_bytes(raw)
+                    file_path = _temp_image_file
+                md_content = _execute_baidu_complex(baidu_config, file_path)
+                if md_content.startswith("错误:"):
+                    return {"success": False, "error": md_content}
+                markdown = md_content.strip()
+                if not markdown:
                     return {"success": False, "error": "未识别到文字"}
-                markdown = _format_image_markdown_paragraphs(content)
 
             elif input_type == "pdf":
-                if ocr_backend == "baidu":
-                    api_key = os.getenv("BAIDU_OCR_API_KEY")
-                    secret_key = os.getenv("BAIDU_OCR_SECRET_KEY")
-                    baidu_config = _BaiduComplexConfig(
-                        api_key=api_key,
-                        secret_key=secret_key,
-                        output_path=output_path,
-                        inline_images=inline_images,
-                    )
-                    md_content = _execute_baidu_complex(baidu_config, input_path)
-                    if md_content.startswith("错误:"):
-                        return {"success": False, "error": md_content}
-                    markdown = md_content
-                else:
-                    impl = _LocalPdfOcrImpl()
-                    local_result = impl.execute_pdf(input_path, output_path)
-                    if not local_result.get("success"):
-                        return local_result
-                    markdown = local_result["markdown"]
-                    _local_page_count = local_result.get("page_count")
-                    _local_figure_count = local_result.get("figure_count")
+                md_content = _execute_baidu_complex(baidu_config, input_path)
+                if md_content.startswith("错误:"):
+                    return {"success": False, "error": md_content}
+                markdown = md_content
             else:
                 return {"success": False, "error": "不支持的输入类型"}
 
-            if output_format == "html":
-                final_content = _markdown_to_html(markdown)
-                out_ext = ".html"
-            else:
-                final_content = markdown
-                out_ext = ".md"
-
+            final_content = markdown
             written_path = None
             if output_path:
                 out = Path(output_path)
-                if out.suffix.lower() not in (".md", ".html"):
-                    out = out.with_suffix(out_ext)
+                if out.suffix.lower() != ".md":
+                    out = out.with_suffix(".md")
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(final_content, encoding="utf-8")
                 written_path = str(out.resolve())
@@ -832,15 +640,10 @@ class _EbookToMdImpl:
                 "success": True,
                 "markdown": markdown,
                 "content": final_content,
-                "output_format": output_format,
                 "message": "转换成功",
             }
             if written_path:
                 response["output_path"] = written_path
-            if _local_page_count is not None:
-                response["page_count"] = _local_page_count
-            if _local_figure_count is not None:
-                response["figure_count"] = _local_figure_count
             return response
 
         finally:
@@ -849,13 +652,17 @@ class _EbookToMdImpl:
                     os.remove(_temp_ebook_pdf)
                 except OSError:
                     pass
+            if _temp_image_file and os.path.exists(_temp_image_file):
+                try:
+                    os.remove(_temp_image_file)
+                except OSError:
+                    pass
 
 
 def run(
     *,
     input_path: str = "",
     output_path: str = None,
-    output_format: str = "md",
     ocr_backend: str = "baidu",
     inline_images: bool = False,
     **kwargs,
@@ -864,7 +671,6 @@ def run(
     params = kwargs.get("parameters", kwargs) if isinstance(kwargs.get("parameters"), dict) else kwargs
     input_path = params.get("input_path") or input_path
     output_path = params.get("output_path") or output_path
-    output_format = (params.get("output_format") or output_format or "md").lower()
     ocr_backend = (params.get("ocr_backend") or ocr_backend or "baidu").lower()
     inline_images = params.get("inline_images", inline_images)
 
@@ -875,7 +681,6 @@ def run(
         result = impl.execute(
             input_path=input_path,
             output_path=output_path,
-            output_format=output_format,
             ocr_backend=ocr_backend,
             inline_images=inline_images,
         )
@@ -890,7 +695,7 @@ def run(
             return msg
         return "错误: {}".format(result.get("error", result.get("message", "转换失败")))
     except ImportError:
-        return "错误: 请安装依赖: pip install pymupdf pytesseract Pillow requests"
+        return "错误: 请安装依赖: pip install pymupdf requests"
     except Exception as e:
         logger.exception("ebook_to_md 失败: %s", e)
         return "错误: {}".format(str(e))
