@@ -34,7 +34,7 @@ PARAM_DESCRIPTIONS = {
     "input_path": "文档路径，支持 pdf/png/jpeg/mobi/epub；可为 base64 图片数据",
     "output_path": "输出文件路径（不指定则仅返回字符串）",
     "ocr_backend": "保留参数，仅支持百度 OCR",
-    "inline_images": "图片是否 base64 内联（仅百度+PDF）",
+    "inline_images": "图片是否 base64 内联",
 }
 
 FIG_HEIGHT_PT = 260
@@ -475,7 +475,7 @@ class _BaiduComplexConfig:
     api_key: str
     secret_key: str
     output_path: Optional[str] = None
-    inline_images: bool = False
+    inline_images: bool = True
 
 
 def _execute_baidu_complex(config: _BaiduComplexConfig, file_path: str) -> str:
@@ -552,7 +552,7 @@ class _EbookToMdImpl:
         input_path = params.get("input_path") or kwargs.get("input_path")
         output_path = params.get("output_path") or kwargs.get("output_path")
         ocr_backend = (params.get("ocr_backend") or kwargs.get("ocr_backend") or "baidu").lower()
-        inline_images = params.get("inline_images", kwargs.get("inline_images", False))
+        inline_images = params.get("inline_images", kwargs.get("inline_images", True))
 
         if not input_path:
             return {"success": False, "error": "input_path 不能为空"}
@@ -662,7 +662,7 @@ def run(
     input_path: str = "",
     output_path: str = None,
     ocr_backend: str = "baidu",
-    inline_images: bool = False,
+    inline_images: bool = True,
     **kwargs,
 ) -> str:
     """Execute ebook_to_md and return str."""

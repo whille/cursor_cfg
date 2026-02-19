@@ -26,7 +26,7 @@ description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown. Uses Baidu OCR only. Us
 | input_path | string | 是 | - | 文档路径（pdf/png/jpeg/mobi/epub）或 base64 图片 |
 | output_path | string | 否 | - | 输出文件路径 |
 | ocr_backend | string | 否 | "baidu" | 保留参数，仅支持百度 |
-| inline_images | bool | 否 | false | 图片是否 base64 内联（仅 baidu+PDF） |
+| inline_images | bool | 否 | true | 图片是否 base64 内联 |
 
 ## 快速开始
 
