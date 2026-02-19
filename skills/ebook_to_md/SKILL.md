@@ -1,0 +1,102 @@
+---
+name: ebook-to-md
+description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown or HTML. Supports Baidu OCR (default) or local Tesseract. Use when 扫描PDF转Markdown、pdf ocr、图像识别、电子书转Markdown、ebook to markdown.
+---
+
+# ebook_to_md Skill
+
+将 PDF、图片、MOBI、EPUB 转为 Markdown 或 HTML。支持百度 OCR（默认）或本地 Tesseract。合并了原 pdf_ocr_to_markdown 与 ocr 功能。
+
+## 输入格式
+
+- **PDF**：扫描版/图像型 PDF
+- **PNG/JPEG**：单张图片
+- **MOBI/EPUB**：需安装 Calibre，先转 PDF 再处理
+
+图片 OCR 输出会自动添加 Markdown 分段：首行若为短标题则转为 `##`，对话段落前插入空行。
+
+## 输出格式
+
+- **md**（默认）：Markdown
+- **html**：HTML
+
+## 参数
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| input_path | string | 是 | - | 文档路径（pdf/png/jpeg/mobi/epub）或 base64 图片 |
+| output_path | string | 否 | - | 输出文件路径 |
+| output_format | string | 否 | "md" | 输出格式：md, html |
+| ocr_backend | string | 否 | "baidu" | OCR 引擎：baidu, local |
+| inline_images | bool | 否 | false | 图片是否 base64 内联（仅 baidu+PDF） |
+
+## 快速开始
+
+```bash
+cd /path/to/Iagent
+python -c "
+from skills.ebook_to_md.ebook_to_md import run
+# PDF 转 Markdown（百度 OCR）
+print(run(input_path='./scanned.pdf'))
+# 图片转 Markdown
+print(run(input_path='./screenshot.png'))
+# 输出 HTML
+print(run(input_path='./doc.pdf', output_format='html', output_path='./out.html'))
+# 使用本地 Tesseract
+print(run(input_path='./doc.pdf', ocr_backend='local'))
+"
+```
+
+## 依赖
+
+### Python
+
+```bash
+pip install pymupdf pytesseract Pillow requests
+# 可选：HTML 输出
+pip install markdown  # 或 mistune
+```
+
+### 系统
+
+- **Tesseract**（ocr_backend=local）：`brew install tesseract tesseract-lang`
+- **Calibre**（mobi/epub）：`brew install calibre`
+- **百度 OCR**（ocr_backend=baidu）：设置 `BAIDU_OCR_API_KEY`、`BAIDU_OCR_SECRET_KEY`
+
+## 使用示例
+
+### 百度 OCR（默认）
+
+```python
+from skills.ebook_to_md.ebook_to_md import run
+run(input_path='./report.pdf', output_path='./report.md')
+run(input_path='./image.png')  # 图片识别
+```
+
+### 本地 Tesseract
+
+```python
+run(input_path='./scanned.pdf', ocr_backend='local', output_path='./out.md')
+```
+
+### 输出 HTML
+
+```python
+run(input_path='./doc.pdf', output_format='html', output_path='./doc.html')
+```
+
+### MOBI/EPUB（需 Calibre）
+
+```python
+run(input_path='./book.epub', output_path='./book.md')
+run(input_path='./book.mobi', ocr_backend='local')
+```
+
+## 返回格式
+
+成功：返回字符串，含预览；若指定 output_path 则写入文件。
+失败：返回 "错误: ..."
+
+## 相关
+
+- **pdf_to_markdown**：原生文本 PDF 转换（docling）
