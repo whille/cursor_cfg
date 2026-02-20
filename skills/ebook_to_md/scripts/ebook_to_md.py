@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 ebook_to_md skill: convert PDF/PNG/JPEG/MOBI/EPUB to Markdown.
-Uses Baidu OCR only. Schema auto-inferred from run().
+Uses Baidu OCR only. Schema auto-inferred from main().
+Entry: main() + CLI.
 """
 
 try:
@@ -11,12 +12,14 @@ try:
 except ImportError:
     pass
 
+import argparse
 import base64
 import json
 import logging
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -26,16 +29,6 @@ from typing import Any, Dict, List, Optional
 import requests
 
 logger = logging.getLogger(__name__)
-
-# Cursor-style: schema inferred from run()
-TOOL_DESCRIPTION = "将 PDF/图片/MOBI/EPUB 转为 Markdown，使用百度 OCR"
-TOOL_REQUIRED = ["input_path"]
-PARAM_DESCRIPTIONS = {
-    "input_path": "文档路径，支持 pdf/png/jpeg/mobi/epub；可为 base64 图片数据",
-    "output_path": "输出文件路径（不指定则仅返回字符串）",
-    "ocr_backend": "保留参数，仅支持百度 OCR",
-    "inline_images": "图片是否 base64 内联",
-}
 
 FIG_HEIGHT_PT = 260
 API_BASE = "https://aip.baidubce.com"
@@ -187,7 +180,7 @@ def _format_image_markdown_paragraphs(content: str) -> str:
     if not lines:
         return content
     out = []
-    # 在每段以 “ 开头的对话前插入空行（分段）；标题由 OCR 识别，不做首行推测
+    # 在每段以 " 开头的对话前插入空行（分段）；标题由 OCR 识别，不做首行推测
     for i in range(0, len(lines)):
         line = lines[i]
         if line.strip().startswith("\u201c") and out and out[-1] != "":
@@ -657,7 +650,7 @@ class _EbookToMdImpl:
                     pass
 
 
-def run(
+def main(
     *,
     input_path: str = "",
     output_path: str = None,
@@ -697,3 +690,21 @@ def run(
     except Exception as e:
         logger.exception("ebook_to_md 失败: %s", e)
         return "错误: {}".format(str(e))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PDF/图片/MOBI/EPUB 转 Markdown（百度 OCR）")
+    parser.add_argument("--input_path", required=True, help="文档路径或 base64 图片")
+    parser.add_argument("--output_path", help="输出 .md 路径")
+    parser.add_argument("--ocr_backend", default="baidu", help="仅支持 baidu")
+    parser.add_argument("--inline_images", action="store_true", default=True, help="图片 base64 内联")
+    parser.add_argument("--no_inline_images", action="store_false", dest="inline_images")
+    args = parser.parse_args()
+    kw = {
+        "input_path": args.input_path,
+        "output_path": args.output_path,
+        "ocr_backend": args.ocr_backend,
+        "inline_images": args.inline_images,
+    }
+    print(main(**kw))
+    sys.exit(0)

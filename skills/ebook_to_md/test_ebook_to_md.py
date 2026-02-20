@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from skills.ebook_to_md.ebook_to_md import _EbookToMdImpl
+from skills.ebook_to_md.scripts.ebook_to_md import _EbookToMdImpl
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 EXPECTED_DIR = FIXTURES_DIR / "expected"
