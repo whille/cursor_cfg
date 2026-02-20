@@ -31,14 +31,12 @@ description: Convert PDF/PNG/JPEG/MOBI/EPUB to Markdown. Uses Baidu OCR only. Us
 ## 快速开始
 
 ```bash
-cd /path/to/Iagent
-python -c "
-from skills.ebook_to_md import main
 # PDF 转 Markdown（百度 OCR）
-print(main(input_path='./scanned.pdf'))
+python scripts/ebook_to_md.py --input_path=./scanned.pdf
 # 图片转 Markdown
-print(main(input_path='./screenshot.png'))
-"
+python scripts/ebook_to_md.py --input_path=./screenshot.png
+# 指定输出路径
+python scripts/ebook_to_md.py --input_path=./report.pdf --output_path=./report.md
 ```
 
 ## 依赖
