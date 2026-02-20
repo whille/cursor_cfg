@@ -189,14 +189,19 @@ def _format_image_markdown_paragraphs(content: str) -> str:
     return "\n".join(out).rstrip()
 
 
+# 文档解析接口：文档解析（PaddleOCR-VL）https://cloud.baidu.com/doc/OCR/s/7mh8u7ruk
+# 提交请求 QPS=2，获取结果 QPS=10；建议提交后 5～10 秒轮询。
+PADDLE_VL_SUBMIT_URL = "{}/rest/2.0/brain/online/v2/paddle-vl-parser/task".format(API_BASE)
+PADDLE_VL_QUERY_URL = "{}/rest/2.0/brain/online/v2/paddle-vl-parser/task/query".format(API_BASE)
+
+
 def _submit_parser_task(access_token: str, file_path: str, file_name: str) -> str:
     with open(file_path, "rb") as f:
         file_data = base64.b64encode(f.read()).decode("utf-8")
-    url = "{}/rest/2.0/brain/online/v2/parser/task".format(API_BASE)
     params = {"access_token": access_token}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"file_data": file_data, "file_name": file_name}
-    resp = requests.post(url, params=params, headers=headers, data=data)
+    resp = requests.post(PADDLE_VL_SUBMIT_URL, params=params, headers=headers, data=data)
     if resp.status_code != 200:
         raise RuntimeError("提交任务失败: HTTP {} - {}".format(resp.status_code, resp.text))
     j = resp.json()
@@ -211,11 +216,10 @@ def _submit_parser_task(access_token: str, file_path: str, file_name: str) -> st
 
 
 def _query_parser_result(access_token: str, task_id: str) -> dict:
-    url = "{}/rest/2.0/brain/online/v2/parser/task/query".format(API_BASE)
     params = {"access_token": access_token}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"task_id": task_id}
-    resp = requests.post(url, params=params, headers=headers, data=data)
+    resp = requests.post(PADDLE_VL_QUERY_URL, params=params, headers=headers, data=data)
     if resp.status_code != 200:
         raise RuntimeError("查询失败: HTTP {}".format(resp.status_code))
     j = resp.json()
@@ -697,8 +701,12 @@ if __name__ == "__main__":
     parser.add_argument("--input_path", required=True, help="文档路径或 base64 图片")
     parser.add_argument("--output_path", help="输出 .md 路径")
     parser.add_argument("--ocr_backend", default="baidu", help="仅支持 baidu")
-    parser.add_argument("--inline_images", action="store_true", default=True, help="图片 base64 内联")
-    parser.add_argument("--no_inline_images", action="store_false", dest="inline_images")
+    parser.add_argument(
+        "--no_inline_images",
+        action="store_false",
+        dest="inline_images",
+        help="不将图片 base64 内联（默认内联）",
+    )
     args = parser.parse_args()
     kw = {
         "input_path": args.input_path,
